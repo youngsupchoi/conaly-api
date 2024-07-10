@@ -123,3 +123,70 @@ export const getReviewSummaryByUsername = async (
     res.status(500).json({ message: err.message });
   }
 };
+export const getUserActivityTrend = async (req: Request, res: Response) => {
+  try {
+    const username = req.params.username;
+
+    const today = new Date();
+    const monthEnds = [];
+    for (let i = 0; i < 6; i++) {
+      const endOfMonth = new Date(
+        today.getFullYear(),
+        today.getMonth() - i + 1,
+        0
+      );
+      monthEnds.push(endOfMonth);
+    }
+
+    const reviews = await Review.aggregate([
+      { $match: { "author.username": username } },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: {
+          "_id.year": -1,
+          "_id.month": -1,
+        },
+      },
+    ]);
+
+    // Initialize review counts with zero
+    const reviewCounts = monthEnds.map((date) => ({
+      date,
+      count: 0,
+    }));
+
+    // Accumulate review counts for each month
+    reviews.forEach((review) => {
+      const reviewDate = new Date(review._id.year, review._id.month - 1);
+      reviewCounts.forEach((reviewCount) => {
+        if (reviewDate <= reviewCount.date) {
+          reviewCount.count += review.count;
+        }
+      });
+    });
+
+    // Accumulate counts to be cumulative
+    for (let i = reviewCounts.length - 1; i > 0; i--) {
+      reviewCounts[i - 1].count += reviewCounts[i].count;
+    }
+
+    res.json(
+      reviewCounts.map((reviewCount, index) => ({
+        month: 7 - index,
+        date: reviewCount.date,
+        count: reviewCount.count,
+      }))
+    );
+  } catch (error) {
+    const err = error as Error;
+    res.status(500).json({ message: err.message });
+  }
+};
