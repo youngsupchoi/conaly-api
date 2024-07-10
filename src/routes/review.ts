@@ -8,7 +8,7 @@ const router = express.Router();
 
 router.get("/test", review.test);
 
-router.get("/userinfo", review.userInfo);
+router.get("/userinfo/:username", review.getReviewSummaryByUsername);
 
 router.get("/username/:username", review.getReviewsByUsername);
 

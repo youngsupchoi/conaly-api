@@ -85,3 +85,41 @@ export const getReviewsByUsername = async (req: Request, res: Response) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+export const getReviewSummaryByUsername = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const username = req.params.username;
+
+    // 기본 매치 조건
+    const matchConditions: any = {
+      "author.username": username,
+    };
+
+    // 리뷰 요약 정보 조회
+    const reviewSummary = await Review.aggregate([
+      { $match: matchConditions },
+      {
+        $group: {
+          _id: "$author.username",
+          reviewCount: { $sum: 1 },
+          averageRating: { $avg: "$rating" },
+          totalRecommendations: { $sum: "$recommCnt" },
+        },
+      },
+    ]);
+
+    if (reviewSummary.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No reviews found for the username" });
+    }
+
+    res.json(reviewSummary[0]);
+  } catch (error) {
+    const err = error as Error; // 'Error' 타입으로 캐스팅
+    res.status(500).json({ message: err.message });
+  }
+};
