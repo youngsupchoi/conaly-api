@@ -35,8 +35,10 @@ app.get("/", (req: Request, res: Response) => {
 });
 
 const reviewRouter = require("./routes/review");
+const productRouter = require("./routes/product");
 
 app.use("/review", reviewRouter);
+app.use("/product", productRouter);
 
 // Example route with validation
 app.post(
