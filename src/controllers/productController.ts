@@ -4,9 +4,7 @@ import Review from "../models/Review";
 
 export const getProductByName = async (req: Request, res: Response) => {
   try {
-    const productName = req.params.productName;
-    console.log("🚀 ~ getProductByName ~ productName:", productName);
-
+    const productName = req.body.productName;
     const product = await Product.findOne(
       {
         name: productName,

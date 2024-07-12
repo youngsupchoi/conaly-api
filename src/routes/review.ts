@@ -19,4 +19,8 @@ router.get("/useractivitytrend/:username", review.getUserActivityTrend);
 router.get("/product/wordcloud/:productname", product.generateWordCloudData);
 
 router.post("/product/trend", review.getProductActivityTrend);
+
+// 리뷰 검색 API 엔드포인트
+router.post("/search", review.searchReviews);
+
 module.exports = router;
