@@ -418,6 +418,7 @@ export const searchReviews = async (req: Request, res: Response) => {
       productReviewCount: "$product.reviewCount",
       userTotalReviews: { $ifNull: ["$userStats.totalReviews", 0] },
       userAverageRating: { $ifNull: ["$userStats.averageRating", 0] },
+      content: 1,
     },
   });
 
