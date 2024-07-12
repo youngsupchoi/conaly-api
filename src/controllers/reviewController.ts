@@ -268,10 +268,14 @@ interface QueryInput {
 }
 
 export const searchReviews = async (req: Request, res: Response) => {
+  console.log("Starting searchReviews function");
   const input: QueryInput = req.body;
+  console.log("Input received:", input);
+
   const pipeline: PipelineStage[] = [];
 
   // 1. Match stage for initial filtering
+  console.log("Building initial match stage");
   const matchStage: any = {};
 
   // Keywords
@@ -325,8 +329,10 @@ export const searchReviews = async (req: Request, res: Response) => {
   }
 
   pipeline.push({ $match: matchStage });
+  console.log("Initial match stage:", JSON.stringify(matchStage, null, 2));
 
   // 2. Lookup stage to join with Product collection
+  console.log("Adding lookup stage for Product collection");
   pipeline.push({
     $lookup: {
       from: "Product",
@@ -337,8 +343,10 @@ export const searchReviews = async (req: Request, res: Response) => {
   });
 
   pipeline.push({ $unwind: "$product" });
+  console.log("Product lookup and unwind stages added");
 
   // 3. Match stage for product-related filters
+  console.log("Building product-related match stage");
   const productMatchStage: any = {};
 
   if (input.brands.length > 0) {
@@ -353,9 +361,16 @@ export const searchReviews = async (req: Request, res: Response) => {
 
   if (Object.keys(productMatchStage).length > 0) {
     pipeline.push({ $match: productMatchStage });
+    console.log(
+      "Product match stage added:",
+      JSON.stringify(productMatchStage, null, 2)
+    );
+  } else {
+    console.log("No product-specific filters applied");
   }
 
   // 4. Sorting
+  console.log("Adding sort stage");
   let sortStage: any = {};
   switch (input.sortBy) {
     case "최신순":
@@ -376,12 +391,8 @@ export const searchReviews = async (req: Request, res: Response) => {
   pipeline.push({ $sort: sortStage });
   console.log("Sort stage:", sortStage);
 
-  // 5. Pagination
-  const skip = (input.page - 1) * input.limit;
-  pipeline.push({ $skip: skip });
-  pipeline.push({ $limit: input.limit });
-  console.log("Pagination:", { skip, limit: input.limit });
-
+  // 5. Lookup stage for user stats
+  console.log("Adding lookup stage for user stats");
   pipeline.push({
     $lookup: {
       from: "Review",
@@ -403,8 +414,10 @@ export const searchReviews = async (req: Request, res: Response) => {
   pipeline.push({
     $unwind: { path: "$userStats", preserveNullAndEmptyArrays: true },
   });
+  console.log("User stats lookup and unwind stages added");
 
   // 6. Project stage to shape the output
+  console.log("Adding project stage");
   pipeline.push({
     $project: {
       productName: "$product.name",
@@ -421,15 +434,26 @@ export const searchReviews = async (req: Request, res: Response) => {
       content: 1,
     },
   });
+  console.log("Project stage added");
+
+  // 7. Pagination
+  console.log("Adding pagination stages");
+  const skip = (input.page - 1) * input.limit;
+  pipeline.push({ $skip: skip });
+  pipeline.push({ $limit: input.limit });
+  console.log("Pagination:", { skip, limit: input.limit });
 
   console.log("Final pipeline:", JSON.stringify(pipeline, null, 2));
 
   try {
+    console.log("Executing aggregation pipeline");
     // Execute the aggregation pipeline
     const reviews = await Review.aggregate(pipeline);
+    console.log(`Retrieved ${reviews.length} reviews`);
 
     // Get total count (for pagination info)
-    const countPipeline = pipeline.slice(0, -3); // Remove sort, skip, and limit stages
+    console.log("Calculating total count for pagination");
+    const countPipeline = pipeline.slice(0, -2); // Remove skip and limit stages
     countPipeline.push({ $count: "total" });
     const countResult = await Review.aggregate(countPipeline);
     const totalCount = countResult.length > 0 ? countResult[0].total : 0;
