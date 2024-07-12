@@ -70,6 +70,14 @@ const reviewSchema: Schema = new Schema(
   }
 );
 
+// 기본 인덱스 추가
+reviewSchema.index({ productId: 1 });
+reviewSchema.index({ createdAt: -1 });
+reviewSchema.index({ platform: 1 });
+reviewSchema.index({ rating: 1 });
+reviewSchema.index({ content: "text" }); // 텍스트 검색을 위한 인덱스
+reviewSchema.index({ "author.username": 1 }); // 작성자 이름에 대한 인덱스
+
 const Review = mongoose.model<IReview>("Review", reviewSchema, "Review");
 
 export default Review;

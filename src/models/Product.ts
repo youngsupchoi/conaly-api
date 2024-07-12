@@ -62,6 +62,13 @@ const productSchema: Schema = new Schema(
   }
 );
 
+// 기본 인덱스 추가
+productSchema.index({ name: 1 });
+productSchema.index({ brand: 1 });
+productSchema.index({ platform: 1 });
+productSchema.index({ averageRating: -1 });
+productSchema.index({ reviewCount: -1 });
+
 // 인덱스 설정 (필요에 따라 추가)
 // productSchema.index({ platform: 1, name: 1 });
 // productSchema.index({ brand: 1 });

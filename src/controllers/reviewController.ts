@@ -267,65 +267,91 @@ interface QueryInput {
   limit: number;
 }
 
+const getStartDate = (createdDate: string): Date | null => {
+  const today = new Date();
+  switch (createdDate) {
+    case "24시간 이내":
+      return new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    case "일주일 이내":
+      return new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case "한 달 이내":
+      return new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+    default:
+      return null;
+  }
+};
+
+// MongoDB의 $sort 스테이지에 사용될 수 있는 값들의 타입을 정의
+type SortDirection = 1 | -1;
+type MetaSort = { $meta: string };
+type SortValue = SortDirection | MetaSort;
+
+// getSortStage 함수의 반환 타입을 명시적으로 지정
+const getSortStage = (sortBy: string): Record<string, SortDirection> => {
+  switch (sortBy) {
+    case "최신순":
+      return { createdAt: -1 };
+    case "오래된순":
+      return { createdAt: 1 };
+    case "평점높은순":
+      return { rating: -1 };
+    case "평점낮은순":
+      return { rating: 1 };
+    default:
+      return { createdAt: -1 };
+  }
+};
 export const searchReviews = async (req: Request, res: Response) => {
   console.log("Starting searchReviews function");
   const input: QueryInput = req.body;
   console.log("Input received:", input);
 
   const pipeline: PipelineStage[] = [];
+  let indexHint: any = {};
 
   // 1. Match stage for initial filtering
   console.log("Building initial match stage");
   const matchStage: any = {};
 
-  // Keywords
+  // Keywords (텍스트 검색 사용)
   if (input.keywords.length > 0) {
-    matchStage.content = { $regex: input.keywords.join("|"), $options: "i" };
-    console.log("Keywords filter:", matchStage.content);
+    matchStage.$text = { $search: input.keywords.join(" ") };
+    console.log("Keywords filter:", matchStage.$text);
+    // 텍스트 검색 사용 시 인덱스 힌트 사용 안 함
+    indexHint = null;
   }
 
   // Platforms
   if (input.platforms.length > 0) {
     matchStage.platform = { $in: input.platforms };
     console.log("Platforms filter:", matchStage.platform);
+    if (indexHint !== null && Object.keys(indexHint).length === 0)
+      indexHint.platform = 1;
   }
 
   // Ratings
   if (input.ratings.length > 0) {
-    matchStage.rating = { $in: input.ratings.map((r) => r / 5) }; // Convert 1-5 scale to 0-1 scale
+    matchStage.rating = { $in: input.ratings.map((r) => r / 5) };
     console.log("Ratings filter:", matchStage.rating);
+    if (indexHint !== null && Object.keys(indexHint).length === 0)
+      indexHint.rating = 1;
   }
 
   // Created Date
-  if (input.createdDate) {
-    const today = new Date();
-    let startDate: Date | null = null;
-
-    switch (input.createdDate) {
-      case "24시간 이내":
-        startDate = new Date(today);
-        startDate.setDate(today.getDate() - 1);
-        break;
-      case "일주일 이내":
-        startDate = new Date(today);
-        startDate.setDate(today.getDate() - 7);
-        break;
-      case "한 달 이내":
-        startDate = new Date(today);
-        startDate.setMonth(today.getMonth() - 1);
-        break;
-    }
-
-    if (startDate) {
-      matchStage.createdAt = { $gte: startDate };
-      console.log("Created Date filter:", matchStage.createdAt);
-    }
+  const startDate = getStartDate(input.createdDate);
+  if (startDate) {
+    matchStage.createdAt = { $gte: startDate };
+    console.log("Created Date filter:", matchStage.createdAt);
+    if (indexHint !== null && Object.keys(indexHint).length === 0)
+      indexHint.createdAt = -1;
   }
 
   // Authors
   if (input.authors.length > 0) {
     matchStage["author.username"] = { $in: input.authors };
     console.log("Authors filter:", matchStage["author.username"]);
+    if (indexHint !== null && Object.keys(indexHint).length === 0)
+      indexHint["author.username"] = 1;
   }
 
   pipeline.push({ $match: matchStage });
@@ -371,54 +397,13 @@ export const searchReviews = async (req: Request, res: Response) => {
 
   // 4. Sorting
   console.log("Adding sort stage");
-  let sortStage: any = {};
-  switch (input.sortBy) {
-    case "최신순":
-      sortStage = { createdAt: -1 };
-      break;
-    case "오래된순":
-      sortStage = { createdAt: 1 };
-      break;
-    case "평점높은순":
-      sortStage = { rating: -1 };
-      break;
-    case "평점낮은순":
-      sortStage = { rating: 1 };
-      break;
-    default:
-      sortStage = { createdAt: -1 }; // Default to 최신순
-  }
+  const sortStage = getSortStage(input.sortBy);
   pipeline.push({ $sort: sortStage });
   console.log("Sort stage:", sortStage);
 
-  // 5. Lookup stage for user stats
-  console.log("Adding lookup stage for user stats");
-  pipeline.push({
-    $lookup: {
-      from: "Review",
-      let: { userId: "$author.id" },
-      pipeline: [
-        { $match: { $expr: { $eq: ["$author.id", "$$userId"] } } },
-        {
-          $group: {
-            _id: null,
-            totalReviews: { $sum: 1 },
-            averageRating: { $avg: "$rating" },
-          },
-        },
-      ],
-      as: "userStats",
-    },
-  });
-
-  pipeline.push({
-    $unwind: { path: "$userStats", preserveNullAndEmptyArrays: true },
-  });
-  console.log("User stats lookup and unwind stages added");
-
-  // 6. Project stage to shape the output
+  // 5. Project stage to shape the output
   console.log("Adding project stage");
-  pipeline.push({
+  const projectStage = {
     $project: {
       productName: "$product.name",
       userName: "$author.username",
@@ -429,34 +414,41 @@ export const searchReviews = async (req: Request, res: Response) => {
       userImage: "$author.avatar",
       productAverageRating: "$product.averageRating",
       productReviewCount: "$product.reviewCount",
-      userTotalReviews: { $ifNull: ["$userStats.totalReviews", 0] },
-      userAverageRating: { $ifNull: ["$userStats.averageRating", 0] },
       content: 1,
     },
-  });
-  console.log("Project stage added");
+  };
 
-  // 7. Pagination
-  console.log("Adding pagination stages");
-  const skip = (input.page - 1) * input.limit;
-  pipeline.push({ $skip: skip });
-  pipeline.push({ $limit: input.limit });
-  console.log("Pagination:", { skip, limit: input.limit });
+  // 6. Use $facet to perform pagination and count in a single query
+  console.log("Adding $facet stage for pagination and count");
+  pipeline.push({
+    $facet: {
+      paginatedResults: [
+        { $skip: (input.page - 1) * input.limit },
+        { $limit: input.limit },
+        projectStage,
+      ],
+      totalCount: [{ $count: "count" }],
+    },
+  });
 
   console.log("Final pipeline:", JSON.stringify(pipeline, null, 2));
+  console.log("Index hint:", indexHint);
 
   try {
     console.log("Executing aggregation pipeline");
-    // Execute the aggregation pipeline
-    const reviews = await Review.aggregate(pipeline);
-    console.log(`Retrieved ${reviews.length} reviews`);
+    let aggregation = Review.aggregate(pipeline);
 
-    // Get total count (for pagination info)
-    console.log("Calculating total count for pagination");
-    const countPipeline = pipeline.slice(0, -2); // Remove skip and limit stages
-    countPipeline.push({ $count: "total" });
-    const countResult = await Review.aggregate(countPipeline);
-    const totalCount = countResult.length > 0 ? countResult[0].total : 0;
+    // 인덱스 힌트가 null이 아닐 때만 힌트 적용
+    if (indexHint !== null) {
+      aggregation = aggregation.hint(indexHint);
+    }
+
+    const result = await aggregation;
+
+    const reviews = result[0].paginatedResults;
+    const totalCount = result[0].totalCount[0]
+      ? result[0].totalCount[0].count
+      : 0;
 
     console.log("Query results:", { totalCount, reviewsCount: reviews.length });
 
