@@ -301,6 +301,7 @@ const getSortStage = (sortBy: string): Record<string, SortDirection> => {
       return { createdAt: -1 };
   }
 };
+
 export const searchReviews = async (req: Request, res: Response) => {
   console.log("Starting searchReviews function");
   const input: QueryInput = req.body;
@@ -313,11 +314,15 @@ export const searchReviews = async (req: Request, res: Response) => {
   console.log("Building initial match stage");
   const matchStage: any = {};
 
+  // 기본 필터링 조건 추가 (예: 최근 3개월 데이터만 조회)
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  matchStage.createdAt = { $gte: threeMonthsAgo };
+
   // Keywords (텍스트 검색 사용)
   if (input.keywords.length > 0) {
     matchStage.$text = { $search: input.keywords.join(" ") };
     console.log("Keywords filter:", matchStage.$text);
-    // 텍스트 검색 사용 시 인덱스 힌트 사용 안 함
     indexHint = null;
   }
 
@@ -395,15 +400,20 @@ export const searchReviews = async (req: Request, res: Response) => {
     console.log("No product-specific filters applied");
   }
 
-  // 4. Sorting
+  // 4. Sorting (최적화를 위해 앞으로 이동)
   console.log("Adding sort stage");
   const sortStage = getSortStage(input.sortBy);
   pipeline.push({ $sort: sortStage });
   console.log("Sort stage:", sortStage);
 
-  // 5. Project stage to shape the output
+  // 5. Pagination (skip과 limit을 앞으로 이동)
+  const skip = (input.page - 1) * input.limit;
+  pipeline.push({ $skip: skip });
+  pipeline.push({ $limit: input.limit });
+
+  // 6. Project stage
   console.log("Adding project stage");
-  const projectStage = {
+  pipeline.push({
     $project: {
       productName: "$product.name",
       userName: "$author.username",
@@ -416,39 +426,46 @@ export const searchReviews = async (req: Request, res: Response) => {
       productReviewCount: "$product.reviewCount",
       content: 1,
     },
-  };
-
-  // 6. Use $facet to perform pagination and count in a single query
-  console.log("Adding $facet stage for pagination and count");
-  pipeline.push({
-    $facet: {
-      paginatedResults: [
-        { $skip: (input.page - 1) * input.limit },
-        { $limit: input.limit },
-        projectStage,
-      ],
-      totalCount: [{ $count: "count" }],
-    },
   });
 
   console.log("Final pipeline:", JSON.stringify(pipeline, null, 2));
   console.log("Index hint:", indexHint);
 
+  // 7. Count total documents (별도의 쿼리로 수행)
+  const countPipeline = [
+    { $match: matchStage },
+    {
+      $lookup: {
+        from: "Product",
+        localField: "productId",
+        foreignField: "_id",
+        as: "product",
+      },
+    },
+    { $unwind: "$product" },
+    ...(Object.keys(productMatchStage).length > 0
+      ? [{ $match: productMatchStage }]
+      : []),
+    { $count: "total" },
+  ];
+
   try {
     console.log("Executing aggregation pipeline");
-    let aggregation = Review.aggregate(pipeline);
+    let reviewsQuery = Review.aggregate(pipeline);
+    let countQuery = Review.aggregate(countPipeline);
 
     // 인덱스 힌트가 null이 아닐 때만 힌트 적용
     if (indexHint !== null) {
-      aggregation = aggregation.hint(indexHint);
+      reviewsQuery = reviewsQuery.hint(indexHint);
+      countQuery = countQuery.hint(indexHint);
     }
 
-    const result = await aggregation;
+    const [reviews, countResult] = await Promise.all([
+      reviewsQuery,
+      countQuery,
+    ]);
 
-    const reviews = result[0].paginatedResults;
-    const totalCount = result[0].totalCount[0]
-      ? result[0].totalCount[0].count
-      : 0;
+    const totalCount = countResult.length > 0 ? countResult[0].total : 0;
 
     console.log("Query results:", { totalCount, reviewsCount: reviews.length });
 
