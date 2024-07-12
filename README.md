@@ -24,7 +24,7 @@ cd conaly-api
 프로젝트 루트에 .env 파일을 생성하고 다음 내용을 추가합니다:
 
 ```
-PORT=3000
+PORT=8080
 MONGO_URI=your_mongo_uri
 ```
 
@@ -70,8 +70,8 @@ RUN if [ "$NODE_ENV" = "production" ]; then npm run build; fi
 # Default command
 CMD [ "npm", "start" ]
 
-# Expose port 3000
-EXPOSE 3000
+# Expose port 8080
+EXPOSE 8080
 ```
 
 ## Docker Compose 설정
@@ -91,7 +91,7 @@ services:
     volumes:
       - .:/usr/src/app
     ports:
-      - "3000:3000"
+      - "8080:8080"
     command: npx nodemon --exec npx ts-node src/index.ts
 
 ```
@@ -109,7 +109,7 @@ services:
       args:
         NODE_ENV: production
     ports:
-      - "3000:3000"
+      - "8080:8080"
 ```
 
 ## 스크립트
@@ -158,7 +158,7 @@ npm start
 ## 추가 정보
 
 MongoDB 연결: .env 파일에 MONGO_URI를 설정하여 MongoDB에 연결합니다.
-포트 설정: 기본적으로 포트 3000에서 애플리케이션이 실행됩니다. 필요한 경우 .env 파일에서 포트를 변경할 수 있습니다.
+포트 설정: 기본적으로 포트 8080에서 애플리케이션이 실행됩니다. 필요한 경우 .env 파일에서 포트를 변경할 수 있습니다.
 이 프로젝트에 대한 질문이나 문제가 발생하면 이슈 트래커에 문제를 제출하세요.
 
 이 README 파일은 프로젝트 설정, 개발 및 배포 환경에서의 실행 방법을 포함하여 필요한 모든 정보를 제공합니다. 각 단계에 대한 명확한 설명과 함께 사용 방법을 상세히 설명하여 사용자가 쉽게 따라할 수 있도록 작성되었습니다.
