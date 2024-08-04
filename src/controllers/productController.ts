@@ -20,6 +20,7 @@ export const getProductByName = async (req: Request, res: Response) => {
         averageRating: 1, // 평균 별점
         breadcrumbs: 1, // 카테고리 경로
         images: 1, // 상품 이미지 URL 목록
+        evaluations: 1, // 상품 평가 항목
       }
     );
     console.log("🚀 ~ getProductByName ~ product:", product);
@@ -38,6 +39,7 @@ export const getProductByName = async (req: Request, res: Response) => {
       averageRating: product.averageRating,
       breadCrumb: product.breadcrumbs,
       images: product.images,
+      evaluations: product.evaluations,
     };
 
     res.json(result);
