@@ -329,6 +329,27 @@ export const searchReviews = async (req: Request, res: Response) => {
   // Platforms
   if (input.platforms.length > 0) {
     matchStage.platform = { $in: input.platforms };
+    // 플랫폼의 모든 항목을 검사, 항목중 "쿠팡"이라는 항목이 있다면 해당 항목을 "coupang.com"으로 변경해줘
+    console.log(
+      "🚀 ~ input.platforms.forEach ~ input.platforms:",
+      input.platforms
+    );
+    input.platforms.forEach((platform, index) => {
+      if (platform === "쿠팡") {
+        input.platforms[index] = "coupang.com";
+      }
+      if (platform === "네이버") {
+        input.platforms[index] = "brand.naver.com";
+      }
+      if (platform === "올리브영") {
+        input.platforms[index] = "oliveyoung.co.kr";
+      }
+    });
+    console.log(
+      "🚀 ~ input.platforms.forEach ~ input.platforms:",
+      input.platforms
+    );
+
     console.log("Platforms filter:", matchStage.platform);
     if (indexHint !== null && Object.keys(indexHint).length === 0)
       indexHint.platform = 1;
@@ -351,12 +372,24 @@ export const searchReviews = async (req: Request, res: Response) => {
       indexHint.createdAt = -1;
   }
 
+  // 유효한 작가 이름 패턴 (예: 쿼리에 영향을 미칠 수 있는 특수 문자 제거)
+  const invalidPattern = /[\*\$\^\.\?\+\|\{\}\[\]\(\)\/\\]/;
+
   // Authors
   if (input.authors.length > 0) {
-    matchStage["author.username"] = { $in: input.authors };
-    console.log("Authors filter:", matchStage["author.username"]);
-    if (indexHint !== null && Object.keys(indexHint).length === 0)
-      indexHint["author.username"] = 1;
+    let regexArray = input.authors
+      .filter((author) => !invalidPattern.test(author)) // 부적합한 패턴을 걸러냄
+      .map((author) => ({
+        "author.username": { $regex: new RegExp(author, "i") },
+      }));
+
+    if (regexArray.length > 0) {
+      matchStage["$or"] = regexArray;
+      console.log("Authors filter:", matchStage["$or"]);
+      if (indexHint !== null && Object.keys(indexHint).length === 0) {
+        indexHint["author.username"] = 1;
+      }
+    }
   }
 
   pipeline.push({ $match: matchStage });
