@@ -2,9 +2,31 @@ import { Request, Response } from "express";
 import Product from "../models/Product";
 import Review from "../models/Review";
 import { PipelineStage } from "mongoose";
-
-exports.test = (req: Request, res: Response) => {
+exports.test = async (req: Request, res: Response) => {
   console.log("test");
+
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+  const matchConditions: any = {
+    platform: "oliver.co.kr",
+    createdAt: { $gte: threeMonthsAgo },
+  };
+
+  const reviewSummary = await Review.aggregate([
+    { $match: matchConditions },
+    {
+      $lookup: {
+        from: "Product",
+        localField: "productId",
+        foreignField: "_id",
+        as: "product",
+      },
+    },
+    { $unwind: "$product" },
+  ]);
+  console.log("🚀 ~ reviewSummary:", reviewSummary);
+
   return res.status(200).send({ message: "Product not found" });
 };
 // 특정 username을 가진 모든 리뷰와 해당 상품 정보를 가져오는 함수
@@ -326,30 +348,22 @@ export const searchReviews = async (req: Request, res: Response) => {
     indexHint = null;
   }
 
+  // 플랫폼의 모든 항목을 검사, 항목중 "쿠팡"이라는 항목이 있다면 해당 항목을 "coupang.com"으로 변경해줘
+  input.platforms.forEach((platform, index) => {
+    if (platform === "쿠팡") {
+      input.platforms[index] = "coupang.com";
+    }
+    if (platform === "네이버") {
+      input.platforms[index] = "brand.naver.com";
+    }
+    if (platform === "올리브영") {
+      input.platforms[index] = "oliveyoung.co.kr";
+    }
+  });
+
   // Platforms
   if (input.platforms.length > 0) {
-    matchStage.platform = { $in: input.platforms };
-    // 플랫폼의 모든 항목을 검사, 항목중 "쿠팡"이라는 항목이 있다면 해당 항목을 "coupang.com"으로 변경해줘
-    console.log(
-      "🚀 ~ input.platforms.forEach ~ input.platforms:",
-      input.platforms
-    );
-    input.platforms.forEach((platform, index) => {
-      if (platform === "쿠팡") {
-        input.platforms[index] = "coupang.com";
-      }
-      if (platform === "네이버") {
-        input.platforms[index] = "brand.naver.com";
-      }
-      if (platform === "올리브영") {
-        input.platforms[index] = "oliveyoung.co.kr";
-      }
-    });
-    console.log(
-      "🚀 ~ input.platforms.forEach ~ input.platforms:",
-      input.platforms
-    );
-
+    matchStage.platform = { $nin: input.platforms };
     console.log("Platforms filter:", matchStage.platform);
     if (indexHint !== null && Object.keys(indexHint).length === 0)
       indexHint.platform = 1;

@@ -1,6 +1,81 @@
 import { Request, Response } from "express";
 import Product from "../models/Product";
 import Review from "../models/Review";
+export const getProductListByName = async (req: Request, res: Response) => {
+  try {
+    const productName = req.body.productName;
+    const platform = req.body.platform;
+    const page = parseInt(req.body.page) || 1; // 페이지 번호를 쿼리 파라미터에서 가져옴, 기본값은 1
+    const pageSize = 20; // 한 페이지당 20개의 결과
+
+    let changedPlatform = null;
+    if (platform === "쿠팡") {
+      changedPlatform = "coupang.com";
+    }
+    if (platform === "네이버") {
+      changedPlatform = "brand.naver.com";
+    }
+    if (platform === "올리브영") {
+      changedPlatform = "oliveyoung.co.kr";
+    }
+
+    const query: any = {
+      name: { $regex: productName, $options: "i" },
+      brand: { $exists: true },
+    };
+
+    if (changedPlatform && changedPlatform !== null) {
+      query.platform = { $regex: changedPlatform, $options: "i" };
+    }
+
+    // 전체 문서 수 계산
+    const totalProducts = await Product.countDocuments(query);
+    const totalPages = Math.ceil(totalProducts / pageSize); // 전체 페이지 수 계산
+
+    const products = await Product.find(query, {
+      _id: 1,
+      name: 1,
+      platform: 1,
+      brand: 1,
+      price: 1,
+      reviewCount: 1,
+      averageRating: 1,
+      breadcrumbs: 1,
+      images: 1,
+      evaluations: 1,
+    })
+      .skip((page - 1) * pageSize) // 해당 페이지의 앞선 데이터 건수는 건너뜀
+      .limit(pageSize); // 한 페이지당 20개의 데이터만 가져옴
+
+    console.log("🚀 ~ getProductListByName ~ products:", products);
+
+    if (products.length === 0) {
+      return res.status(404).json({ message: "Products not found" });
+    }
+
+    const result = {
+      products: products.map((product) => ({
+        _id: product._id,
+        name: product.name,
+        platform: product.platform,
+        brand: product.brand,
+        price: product.price,
+        reviewCount: product.reviewCount,
+        averageRating: product.averageRating,
+        breadCrumb: product.breadcrumbs,
+        images: product.images,
+        evaluations: product.evaluations,
+      })),
+      totalPages: totalPages, // 전체 페이지 수 추가
+      currentPage: page, // 현재 페이지 번호 추가
+    };
+
+    res.json(result);
+  } catch (error) {
+    const err = error as Error;
+    res.status(500).json({ message: err.message });
+  }
+};
 
 export const getProductByName = async (req: Request, res: Response) => {
   try {

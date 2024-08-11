@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 // 가능한 platform 값들을 Union 타입으로 정의
-type PlatformType = "brand.naver.com" | "oliveyoung.co.kr";
+type PlatformType = "brand.naver.com" | "oliveyoung.co.kr" | "coupang.com";
 
 interface IEvaluation {
   name: string;
@@ -46,7 +46,7 @@ const productSchema: Schema = new Schema(
     name: { type: String, required: true },
     platform: {
       type: String,
-      enum: ["brand.naver.com", "oliveyoung.co.kr"],
+      enum: ["brand.naver.com", "oliveyoung.co.kr", "coupang.com"],
       required: true,
     }, // enum 타입으로 강제
     price: { type: Number, required: true },
